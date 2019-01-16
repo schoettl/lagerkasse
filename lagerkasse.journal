@@ -1,0 +1,14 @@
+; journal created 2019-01-15 by hledger
+
+P 2019/01/15 ace 1 €
+P 2019/01/15 spezi 1 €
+
+P 2019/01/15 pfand 0,50 €
+
+2019/01/15 Einkauf
+    assets:getränke:spezi          20 spezi
+    expenses:getränke:spezi       -20 spezi
+
+2019/01/15 Einkauf
+    assets:getränke:spezi          20 spezi
+    expenses:getränke:spezi       -20 spezi
