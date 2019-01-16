@@ -150,9 +150,11 @@ depositReturn() {
     declare person=$1
     declare group=$2
     declare amount=$3
+    declare commodity=$COMMODITY_PFANDFLASCHE
+    # TODO check if it's possible for this person to return deposit.
     echo "$amount $commodity zurück"
     addTransaction "$person" "$group" "Pfandrückgabe" \
-        "-$amount" "$COMMODITY_PFANDFLASCHE" \
+        "-$amount" "$commodity" \
         "assets:forderungen:pfand" \
         "assets:getränke:pfand"
 }
