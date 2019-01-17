@@ -146,13 +146,40 @@ askForNumberHandleErrors() {
     done
 }
 
+printNotReturnedDeposit() {
+    declare person=$1
+    declare number
+    number=$(hledger balance assets:forderungen:pfand tag:person="$person" \
+        | awk 'NR==1 { print $1; exit }')
+    if [[ $number =~ ^[0-9]+$ ]]; then
+        echo "$number"
+    else
+        echo 0
+    fi
+}
+
 depositReturn() {
     declare person=$1
     declare group=$2
     declare amount=$3
     declare commodity=$COMMODITY_PFANDFLASCHE
-    # TODO check if it's possible for this person to return deposit.
+    declare purchasedDeposit
+    purchasedDeposit=$(printNotReturnedDeposit "$person")
+    if (( purchasedDeposit == 0 )); then
+        echo "Geht nicht. $purchasedDeposit Pfandflaschen ausstehend."
+        pressAnyKey
+        return 1
+    elif (( amount > purchasedDeposit )); then
+        echo "Geht nicht. Nur $purchasedDeposit Pfandflaschen ausstehend."
+        read -rp "$purchasedDeposit statt $amount Pfandflaschen zurückgeben? [Y/n] " answer
+        if [[ $answer =~ ^[yY]$|^$ ]]; then
+            amount=$purchasedDeposit
+        else
+            return 1
+        fi
+    fi
     echo "$amount $commodity zurück"
+    echo "noch $(( purchasedDeposit - amount )) $commodity ausstehend"
     addTransaction "$person" "$group" "Pfandrückgabe" \
         "-$amount" "$commodity" \
         "assets:forderungen:pfand" \
@@ -163,6 +190,7 @@ purchase() {
     declare person=$1
     declare group=$2
     declare amount=$3
+    declare commodity=$4
     echo "$amount $commodity"
     addTransaction "$person" "$group" "Getränkekauf" \
         "-$amount" "$commodity" \
@@ -178,14 +206,23 @@ addTransaction() {
     declare commodity=$5
     declare acc1=$6
     declare acc2=$7
-    hledger add -- "$(date -I)" \
-        "$description ; person: $person, gruppe: $group, time: $(date +%T)" \
-        "$acc1" "$amount $commodity" \
-        "$acc2"
+    cat <<TEXT >> "$LEDGER_FILE"
+$(date -I) $description ; person: $person, gruppe: $group, time: $(date +%T)"
+    $acc1     $amount $commodity
+    $acc2
+TEXT
+    # hledger add -- "$(date -I)" \
+    #     "$description ; person: $person, gruppe: $group, time: $(date +%T)" \
+    #     "$acc1" "$amount $commodity" \
+    #     "$acc2"
 }
 
 main() {
     #parseCommandLine "$@"
+    if [[ -z $LEDGER_FILE ]]; then
+        exitWithError "error: environment variable LEDGER_FILE not defined or not exported."
+    fi
+
     while true; do
         declare personSelection person group
         personSelection=$(fzf --delimiter='\t' < personen.txt)
@@ -195,7 +232,8 @@ main() {
         declare amount
         askForNumberHandleErrors "$COMMODITY_PFANDFLASCHE"
         if (( amount > 0 )); then
-            depositReturn "$person" "$group" "$amount"
+            depositReturn "$person" "$group" "$amount" \
+                || true
         fi
 
         while true; do
@@ -204,10 +242,11 @@ main() {
             commodity=$(fzf < commodities.txt)
             askForNumberHandleErrors "$commodity"
             if (( amount > 0 )); then
-                if [[ $commodity == $COMMODITY_PFANDFLASCHE ]]; then
+                if [[ $commodity == "$COMMODITY_PFANDFLASCHE" ]]; then
                     depositReturn "$person" "$group" "$amount"
                 else
                     purchase "$person" "$group" "$amount" "$commodity"
+                    purchase "$person" "$group" "$amount" "$COMMODITY_PFANDFLASCHE"
                 fi
             fi
 

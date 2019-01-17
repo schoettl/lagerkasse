@@ -1,0 +1,4 @@
+hledger register -V assets:forderungen: tag:person="Jakob Schöttl"
+
+mit fzf auf personen.txt
+mit oder ohne -V
