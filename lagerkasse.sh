@@ -111,7 +111,7 @@ askForNumberHandleErrors() {
 printNotReturnedDeposit() {
     declare person=$1
     declare number
-    number=$(hledger -f "$LEDGER_FILE" balance assets:forderungen:pfandflasche tag:person="$person" \
+    number=$(hledger -f "$LEDGER_FILE" "balance assets:forderungen:$COMMODITY_PFANDFLASCHE" tag:person="$person" \
         | awk 'NR==1 { print $1; exit }')
     if [[ $number =~ ^[0-9]+$ ]]; then
         echo "$number"
@@ -144,8 +144,8 @@ depositReturn() {
     echo "noch $(( purchasedDeposit - amount )) $commodity ausstehend"
     addTransaction "$person" "$group" "Pfandrückgabe" \
         "-$amount" "$commodity" \
-        "assets:forderungen:pfandflasche" \
-        "assets:getränke:pfandflasche"
+        "assets:forderungen:$COMMODITY_PFANDFLASCHE" \
+        "assets:getränke:$COMMODITY_PFANDFLASCHE"
 }
 
 purchase() {
