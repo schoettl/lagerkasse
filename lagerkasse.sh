@@ -174,6 +174,51 @@ TEXT
     #     "$acc2"
 }
 
+sell() {
+    declare person=$1
+    declare group=$2
+    declare commodity=$3
+
+    askForNumberHandleErrors "$commodity"
+    if (( amount > 0 )); then
+        if [[ $commodity == "$COMMODITY_PFANDFLASCHE" ]]; then
+            depositReturn "$person" "$group" "$amount" \
+                || true
+        else
+            purchase "$person" "$group" "$amount" "$commodity"
+            purchase "$person" "$group" "$amount" "$COMMODITY_PFANDFLASCHE"
+        fi
+    fi
+}
+
+verkauf() {
+    declare person=$1
+    declare group=$2
+
+    declare commodity
+    commodity=$(fzf < commodities.txt)
+    sell "$person" "$group" "$commodity"
+}
+
+einzahlen() {
+    echo "einzahlen..."
+    pressAnyKey
+}
+
+abrechnen() {
+    echo "abrechnen..."
+    pressAnyKey
+}
+
+printMenu() {
+    echo "Choose an option:"
+    echo " enter to continue Verkauf"
+    echo " e Einzahlen"
+    echo " a Abrechnen"
+    echo " n, x for next person"
+    echo " q quit"
+}
+
 main() {
     parseCommandLine "$@"
 
@@ -184,35 +229,32 @@ main() {
         echo "$person, $group"
 
         if [[ -z $NO_DEPOSIT_RETURN ]]; then
-            declare amount
-            askForNumberHandleErrors "$COMMODITY_PFANDFLASCHE"
-            if (( amount > 0 )); then
-                depositReturn "$person" "$group" "$amount" \
-                    || true
-            fi
+            sell "$person" "$group" "$COMMODITY_PFANDFLASCHE"
         fi
 
+        declare choice=default
         while true; do
-
-            if [[ -z $NO_SELL ]]; then
-                declare commodity
-                commodity=$(fzf < commodities.txt)
-                askForNumberHandleErrors "$commodity"
-                if (( amount > 0 )); then
-                    if [[ $commodity == "$COMMODITY_PFANDFLASCHE" ]]; then
-                        depositReturn "$person" "$group" "$amount"
-                    else
-                        purchase "$person" "$group" "$amount" "$commodity"
-                        purchase "$person" "$group" "$amount" "$COMMODITY_PFANDFLASCHE"
-                    fi
-                fi
-            fi
-
-            declare choice
-            read -rp "Choice [enter to continue, n for next person, q for quit]: " choice
             case $choice in
-                n) break ;;
-                '') continue ;;
+                default)
+                    if [[ -z $NO_SELL ]]; then
+                        verkauf "$person" "$group"
+                    fi
+                    ;;
+                '')
+                    verkauf "$person" "$group"
+                    ;;
+                e)
+                    einzahlen "$person" "$group"
+                    ;;
+                a)
+                    abrechnen "$person" "$group"
+                    ;;
+            esac
+
+            printMenu
+            read -rp "> " choice
+            case $choice in
+                n|x) break ;;
                 q) return ;;
             esac
         done
