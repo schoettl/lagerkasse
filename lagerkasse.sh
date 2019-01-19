@@ -1,6 +1,12 @@
 #!/bin/bash
 # Lagerkasse (Getränkeverkauf, Einzahlung, Abrechnung).
 
+# TODO Remove suspicios characters from person and group before adding to
+# ledger (esp. "," and "()").
+# TODO Check commodities.txt and personen.txt syntax.
+# TODO Remove regex meta chars from person before using tag:person=...! key and
+# value are both regexes!
+
 printUsage() {
     cat <<EOF
 usage: $PROGNAME [options]
@@ -14,7 +20,8 @@ options:
      Lagerkasse.
   -c
      Credit mode - we give credit to customers. They do not have to pay in
-     advance.
+     advance. Currently, the only effect of this option is that a warning is
+     omitted when a person's balance is less than a few Euros.
   -f LEDGER_FILE
      Ledger journal file - used to record book entries and passed to hledger.
      If not specified, the environment variable LEDGER_FILE is used.
@@ -86,7 +93,7 @@ pressAnyKey() {
 
 # $*: command line options for hledger balance
 hledgerBalance() {
-    hledger bal --drop=1 --flat --invert "$@" 'assets:forderungen|liabilities:lagerkasse' tag:person="$person"
+    hledger bal --drop=1 --flat --invert "$@" 'assets:forderungen|liabilities:lagerkasse' tag:'^person$'="^$person$"
 }
 
 # $1: selected commodity
@@ -360,14 +367,19 @@ main() {
         declare personSelection person group
         personSelection=$(sort personen.txt | runFzf --delimiter='\t')
         IFS=$'\t' read -r person group <<< "$personSelection"
-        echo "$person, $group"
 
         if [[ -z $NO_DEPOSIT_RETURN ]]; then
+            echo "$person, $group"
             sell "$person" "$group" "$COMMODITY_PFANDFLASCHE"
         fi
 
         declare choice=default
         while true; do
+
+            echo
+            echo "$person, $group"
+            echo
+
             case $choice in
                 default)
                     if [[ -z $NO_SELL ]]; then
@@ -397,9 +409,6 @@ main() {
                 q) return ;;
             esac
 
-            echo
-            echo "$person, $group"
-            echo
             hledgerBalance
             echo
 
