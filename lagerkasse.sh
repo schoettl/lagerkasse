@@ -95,7 +95,11 @@ hledgerBalance() {
 askForNumber() {
     declare commodity=$1
     declare input
-    echo "$commodity"
+
+    echo
+    echo " $commodity"
+    echo
+
     IFS= read -rp "Anzahl oder '..' oder '  ' eingeben: " input
     if [[ $input =~ ^[0-9]+$ ]]; then
         amount=$input
@@ -176,7 +180,7 @@ addTransaction() {
     declare acc2=$7
     cat <<TEXT >> "$LEDGER_FILE"
 
-$(date -I) $description ; person: $person, gruppe: $group, time: $(date +%T)"
+$(date -I) $description ; person: $person, gruppe: $group, time: $(date +%T)
     $acc1     $amount $commodity
     $acc2
 TEXT
@@ -191,20 +195,26 @@ sell() {
     declare group=$2
     declare commodity=$3
 
+    if [[ $commodity != "$COMMODITY_PFANDFLASCHE" && -z $CREDIT_MODE ]]; then
+        # Standardmodus: Guthaben auf Lagerkasse
+        # Check if person can effort $amount of $commodity + deposit
+        # TODO schwierig... dazu müsste dieses Programm wissen was
+        # $commodity wert ist und selbst Berechnungen machen...
+        # Vllt einfach warnen, wenn debit < 3 €?
+        declare balanceValue
+        balanceValue=$(hledgerBallanceValue)
+        if math "${balanceValue/,/.} < 3"; then
+            echo "Vorsicht: Guthaben < 3 €"
+            pressAnyKey
+        fi
+    fi
+
     askForNumberHandleErrors "$commodity"
     if (( amount > 0 )); then
         if [[ $commodity == "$COMMODITY_PFANDFLASCHE" ]]; then
             depositReturn "$person" "$group" "$amount" \
                 || true
         else
-            if [[ -z $CREDIT_MODE ]]; then
-                # Standardmodus: Vorausbezahlung
-                # Check if person can effort $amount of $commodity + deposit
-                # TODO schwierig... dazu müsste dieses Programm wissen was
-                # $commodity wert ist und selbst Berechnungen machen...
-                # Vllt einfach warnen, wenn debit < 3 €?
-                :
-            fi
             purchase "$person" "$group" "$amount" "$commodity"
             purchase "$person" "$group" "$amount" "$COMMODITY_PFANDFLASCHE"
         fi
@@ -387,6 +397,8 @@ main() {
                 q) return ;;
             esac
 
+            echo
+            echo "$person, $group"
             echo
             hledgerBalance
             echo
