@@ -111,8 +111,8 @@ askForNumberHandleErrors() {
 printNotReturnedDeposit() {
     declare person=$1
     declare number
-    number=$(hledger -f "$LEDGER_FILE" "balance assets:forderungen:$COMMODITY_PFANDFLASCHE" tag:person="$person" \
-        | awk 'NR==1 { print $1; exit }')
+    number=$(hledger -f "$LEDGER_FILE" balance "assets:forderungen:$COMMODITY_PFANDFLASCHE" tag:person="$person" \
+        | awk '{ print $1; exit }')
     if [[ $number =~ ^[0-9]+$ ]]; then
         echo "$number"
     else
