@@ -169,6 +169,7 @@ addTransaction() {
     declare acc1=$6
     declare acc2=$7
     cat <<TEXT >> "$LEDGER_FILE"
+
 $(date -I) $description ; person: $person, gruppe: $group, time: $(date +%T)"
     $acc1     $amount $commodity
     $acc2
@@ -216,7 +217,7 @@ einzahlen() {
     # TODO check if we are in minus - in this case suggest this value
 
     declare amount
-    read -rp "Einzuzahlender Betrag (z.B. 18,5): " amount
+    read -rp "Einzuzahlender Betrag: " amount
     amount=${amount/,/.}
     if [[ -z $amount ]]; then
         return 1
@@ -256,7 +257,7 @@ abrechnen() {
     declare restAmount
     restAmount=$(hledgerBalance -V | awk 'END { print $1 }')
     if math "${restAmount/,/.} < 0"; then
-        echo "$restAmount ausstehend! Bitte Einzahlung machen."
+        echo "${restAmount#-} ausstehend! Bitte Einzahlung machen."
         einzahlen "$person" "$group" \
             && return || return 1
     fi
@@ -273,8 +274,13 @@ abrechnen() {
         fi
     fi
     if [[ $amount =~ ^[0-9]+(.[0-9]*)?$ ]]; then
-        #echo "$amount > $restAmount" | bc
-        # TODO warn if ausbezahlter betrag > restbetrag
+        amount=${amount/,/.}
+        if math "$amount > ${restAmount/,/.}"; then
+            echo "Auszuzahlender Betrag ist größer als Restbetrag."
+            if ! confirmYn "Das bedeutet, die Kasse ist nacher im Minus. Fortfahren?"; then
+                return 1
+            fi
+        fi
         addTransaction "$person" "$group" \
             "Auszahlung" \
             "$amount" "€" \
