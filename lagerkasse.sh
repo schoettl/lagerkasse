@@ -196,16 +196,25 @@ sell() {
     fi
 }
 
-verkauf() {
+# $*: args for fzf
+runFzf() {
+    fzf --reverse "$@"
+}
+
+verkaufen() {
     declare person=$1
     declare group=$2
 
     declare commodity
-    commodity=$(fzf < commodities.txt)
+    commodity=$(runFzf < commodities.txt) || return 1
     sell "$person" "$group" "$commodity"
 }
 
 einzahlen() {
+    declare person=$1
+    declare group=$2
+    # TODO check if we are in minus - in this case suggest this value
+
     declare amount
     read -rp "Einzuzahlender Betrag (z.B. 18,5): " amount
     amount=${amount/,/.}
@@ -224,13 +233,46 @@ einzahlen() {
     fi
 }
 
+confirmYn() {
+    declare question=$1
+
+    declare answer
+    read -rp "$question [Y/n] " answer
+    [[ $answer =~ ^([Yy]|)$ ]]
+}
+
+math() {
+    declare expression=$1
+
+    declare result
+    result=$(bc <<< "$expression")
+    [[ $result == 1 ]]
+}
+
 abrechnen() {
-    # TODO get restwert von hledger
-    declare restAmount=13.5
-    read -rp "Auszuzahlender Betrag [$restAmount]: " amount
+    declare person=$1
+    declare group=$2
+
+    declare restAmount
+    restAmount=$(hledgerBalance -V | awk 'END { print $1 }')
+    if math "${restAmount/,/.} < 0"; then
+        echo "$restAmount ausstehend! Bitte Einzahlung machen."
+        einzahlen "$person" "$group" \
+            && return || return 1
+    fi
+    read -rp "Auszuzahlender Betrag [enter for rest amount: $restAmount]: " amount
     if [[ -z $amount ]]; then
-        amount=$restAmount
-    elif [[ $amount =~ ^[0-9]+(.[0-9]*)?$ ]]; then
+        if math "${restAmount/,/.} == 0"; then
+            return
+        else
+            if confirmYn "$restAmount wirklich ausbezahlen?"; then
+                amount=$restAmount
+            else
+                return 1
+            fi
+        fi
+    fi
+    if [[ $amount =~ ^[0-9]+(.[0-9]*)?$ ]]; then
         #echo "$amount > $restAmount" | bc
         # TODO warn if ausbezahlter betrag > restbetrag
         addTransaction "$person" "$group" \
@@ -247,10 +289,11 @@ abrechnen() {
 
 printMenu() {
     echo "Choose an option:"
-    echo " enter to continue Verkauf"
+    echo " enter for Verkauf"
     echo " e Einzahlen"
     echo " a Abrechnen"
-    echo " v Tabelle mit €-Werten"
+    echo " t Tabelle mit €-Werten"
+    echo " r Buchungssätze manuell reparieren"
     echo " n, x for next person"
     echo " q quit"
 }
@@ -260,7 +303,7 @@ main() {
 
     while true; do
         declare personSelection person group
-        personSelection=$(fzf --delimiter='\t' < personen.txt)
+        personSelection=$(sort personen.txt | runFzf --delimiter='\t')
         IFS=$'\t' read -r person group <<< "$personSelection"
         echo "$person, $group"
 
@@ -273,11 +316,13 @@ main() {
             case $choice in
                 default)
                     if [[ -z $NO_SELL ]]; then
-                        verkauf "$person" "$group"
+                        verkaufen "$person" "$group" \
+                            || true
                     fi
                     ;;
                 '')
-                    verkauf "$person" "$group"
+                    verkaufen "$person" "$group" \
+                        || true
                     ;;
                 e)
                     einzahlen "$person" "$group" \
@@ -287,8 +332,11 @@ main() {
                     abrechnen "$person" "$group" \
                         || true
                     ;;
-                v)
+                t)
                     hledgerBalance -V
+                    ;;
+                r)
+                    vim "$LEDGER_FILE"
                     ;;
             esac
 
