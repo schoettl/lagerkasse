@@ -1,36 +1,30 @@
 #!/bin/bash
-# Short description
+# Lagerkasse (Getränkeverkauf, Einzahlung, Abrechnung).
 
 printUsage() {
     cat <<EOF
-usage: $PROGNAME [options] ARG
+usage: $PROGNAME [options]
 
 options:
+  -V
+     Verkauf nicht automatisch starten. Nützlich für Abrechnung der
+     Lagerkasse.
+  -P
+     Pfandrückgabe nicht automatisch starten. Nützlich bei Einzahlung in
+     Lagerkasse.
+  -f LEDGER_FILE
+     Ledger journal file - used to record book entries and passed to hledger.
+     If not specified, the environment variable LEDGER_FILE is used.
   -h
-     print help message
+     Print help message.
 EOF
 }
 
-set -o errexit -o pipefail -o nounset
+set -o errexit -o pipefail
 shopt -s nullglob
 
 readonly PROGNAME=${0##*/}
 readonly COMMODITY_PFANDFLASCHE=pfandflasche
-
-# Do not use $0 or $BASH_SOURCE to get the program's directory
-# Use ~/.script.conf or wrapper script with cd in ~/.local/bin/ instead
-# [[ -e ~/.script.conf ]] && source ~/.script.conf
-# [[ -n $PROGDIR ]] || exitWithError "error: PROGDIR variable is not defined in the config file"
-# [[ -d $PROGDIR ]] || exitWithError "error: PROGDIR is not a directory"
-
-# Always use declare instead of local!
-# It's more general, can do more, and leads to more consistency.
-
-readonly TEMPDIR=$(mktemp -d /tmp/tmp.XXXXXXXXXX)
-finish() {
-    rm -rf "$TEMPDIR"
-}
-trap finish EXIT
 
 # $1: error message
 exitWithError() {
@@ -42,55 +36,22 @@ exitWithError() {
 # $*: command line arguments = "$@"
 parseCommandLine() {
 
-    declare args arg
-    # this syntax iterates over all function args
-    for arg; do
-        declare delim=""
-        case "$arg" in
-            # translate --gnu-long-options to -g (short options)
-            --config)         args="${args}-c " ;;
-            --pretend)        args="${args}-n " ;;
-            --test)           args="${args}-t " ;;
-            --help-config)    usage_config && exit 0 ;;
-            --help)           args="${args}-h " ;;
-            --verbose)        args="${args}-v " ;;
-            --debug)          args="${args}-x " ;;
-            # pass through anything else
-            *) [[ "${arg:0:1}" == "-" ]] || delim="\""
-                args="${args}${delim}${arg}${delim} " ;;
-        esac
-    done
-    # Reset the positional parameters to the short options
-    eval set -- $args
-
-    declare -a includeResources=()
-    declare verboseOptionCount=0
     # declare options globally and readonly
     declare option
-    while getopts 'nvhxt:c:f:' option; do
+    while getopts 'hf:VP' option; do
         case $option in
             h)
                 printUsage
                 exit 0
                 ;;
-            c)
-                declare -gr CONFIG_FILE=$OPTARG
+            f)
+                declare -gr LEDGER_FILE=$OPTARG
                 ;;
-            v)
-                ((verboseOptionCount++))
+            V)
+                declare -gr NO_SELL=1
                 ;;
-            x)
-                declare -gr DEBUG='-x'
-                set -x
-                ;;
-            t)
-                RUN_TESTS=$OPTARG
-                verbose VINFO "Running tests"
-                ;;
-            n)
-                declare -gr PRETEND=1
-                ;;
-            f)  includeResources+=("$OPTARG")
+            P)
+                declare -gr NO_DEPOSIT_RETURN=1
                 ;;
             *)  printUsage >&2
                 # prints usage after the default error message (invalid option or missing option argument).
@@ -101,15 +62,11 @@ parseCommandLine() {
     done
     shift $((OPTIND-1))
 
-    declare -gr VERBOSE=$verboseOptionCount
-    declare -rga INCLUDE_RESOURCES=("${includeResources[@]}")
-
-    if [[ -z $RUN_TESTS ]]; then
-        [[ ! -f $CONFIG_FILE ]] \
-            && exitWithError "You must provide --config file"
+    if [[ -z $LEDGER_FILE ]]; then
+        exitWithError "error: ledger file not defined. use -f or export environment variable LEDGER_FILE."
     fi
 
-    if (( $# != 1 )); then
+    if (( $# != 0 )); then
         printUsage
         exit 1
     fi
@@ -149,7 +106,7 @@ askForNumberHandleErrors() {
 printNotReturnedDeposit() {
     declare person=$1
     declare number
-    number=$(hledger balance assets:forderungen:pfand tag:person="$person" \
+    number=$(hledger -f "$LEDGER_FILE" balance assets:forderungen:pfand tag:person="$person" \
         | awk 'NR==1 { print $1; exit }')
     if [[ $number =~ ^[0-9]+$ ]]; then
         echo "$number"
@@ -211,17 +168,14 @@ $(date -I) $description ; person: $person, gruppe: $group, time: $(date +%T)"
     $acc1     $amount $commodity
     $acc2
 TEXT
-    # hledger add -- "$(date -I)" \
+    # hledger -f "$LEDGER_FILE" add -- "$(date -I)" \
     #     "$description ; person: $person, gruppe: $group, time: $(date +%T)" \
     #     "$acc1" "$amount $commodity" \
     #     "$acc2"
 }
 
 main() {
-    #parseCommandLine "$@"
-    if [[ -z $LEDGER_FILE ]]; then
-        exitWithError "error: environment variable LEDGER_FILE not defined or not exported."
-    fi
+    parseCommandLine "$@"
 
     while true; do
         declare personSelection person group
@@ -229,24 +183,28 @@ main() {
         IFS=$'\t' read -r person group <<< "$personSelection"
         echo "$person, $group"
 
-        declare amount
-        askForNumberHandleErrors "$COMMODITY_PFANDFLASCHE"
-        if (( amount > 0 )); then
-            depositReturn "$person" "$group" "$amount" \
-                || true
+        if [[ -z $NO_DEPOSIT_RETURN ]]; then
+            declare amount
+            askForNumberHandleErrors "$COMMODITY_PFANDFLASCHE"
+            if (( amount > 0 )); then
+                depositReturn "$person" "$group" "$amount" \
+                    || true
+            fi
         fi
 
         while true; do
 
-            declare commodity
-            commodity=$(fzf < commodities.txt)
-            askForNumberHandleErrors "$commodity"
-            if (( amount > 0 )); then
-                if [[ $commodity == "$COMMODITY_PFANDFLASCHE" ]]; then
-                    depositReturn "$person" "$group" "$amount"
-                else
-                    purchase "$person" "$group" "$amount" "$commodity"
-                    purchase "$person" "$group" "$amount" "$COMMODITY_PFANDFLASCHE"
+            if [[ -z $NO_SELL ]]; then
+                declare commodity
+                commodity=$(fzf < commodities.txt)
+                askForNumberHandleErrors "$commodity"
+                if (( amount > 0 )); then
+                    if [[ $commodity == "$COMMODITY_PFANDFLASCHE" ]]; then
+                        depositReturn "$person" "$group" "$amount"
+                    else
+                        purchase "$person" "$group" "$amount" "$commodity"
+                        purchase "$person" "$group" "$amount" "$COMMODITY_PFANDFLASCHE"
+                    fi
                 fi
             fi
 
