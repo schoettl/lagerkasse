@@ -78,6 +78,11 @@ pressAnyKey() {
     read -rp "Press enter to continue"
 }
 
+# $*: command line options for hledger balance
+hledgerBalance() {
+    hledger bal --drop=1 --flat --invert "$@" 'assets:forderungen|liabilities:lagerkasse' tag:person="$person"
+}
+
 # $1: selected commodity
 # return value: 0 on success
 # other return value: global variable $amount
@@ -106,7 +111,7 @@ askForNumberHandleErrors() {
 printNotReturnedDeposit() {
     declare person=$1
     declare number
-    number=$(hledger -f "$LEDGER_FILE" balance assets:forderungen:pfand tag:person="$person" \
+    number=$(hledger -f "$LEDGER_FILE" balance assets:forderungen:pfandflasche tag:person="$person" \
         | awk 'NR==1 { print $1; exit }')
     if [[ $number =~ ^[0-9]+$ ]]; then
         echo "$number"
@@ -139,8 +144,8 @@ depositReturn() {
     echo "noch $(( purchasedDeposit - amount )) $commodity ausstehend"
     addTransaction "$person" "$group" "Pfandrückgabe" \
         "-$amount" "$commodity" \
-        "assets:forderungen:pfand" \
-        "assets:getränke:pfand"
+        "assets:forderungen:pfandflasche" \
+        "assets:getränke:pfandflasche"
 }
 
 purchase() {
@@ -201,13 +206,43 @@ verkauf() {
 }
 
 einzahlen() {
-    echo "einzahlen..."
-    pressAnyKey
+    declare amount
+    read -rp "Einzuzahlender Betrag (z.B. 18,5): " amount
+    amount=${amount/,/.}
+    if [[ -z $amount ]]; then
+        return 1
+    elif [[ $amount =~ ^[0-9]+(.[0-9]*)?$ ]]; then
+        addTransaction "$person" "$group" \
+            "Einzahlung" \
+            "$amount" "€" \
+            "expenses:einzahlung" \
+            "liabilities:lagerkasse"
+    else
+        echo "Ungültige Eingabe."
+        pressAnyKey
+        return 1
+    fi
 }
 
 abrechnen() {
-    echo "abrechnen..."
-    pressAnyKey
+    # TODO get restwert von hledger
+    declare restAmount=13.5
+    read -rp "Auszuzahlender Betrag [$restAmount]: " amount
+    if [[ -z $amount ]]; then
+        amount=$restAmount
+    elif [[ $amount =~ ^[0-9]+(.[0-9]*)?$ ]]; then
+        #echo "$amount > $restAmount" | bc
+        # TODO warn if ausbezahlter betrag > restbetrag
+        addTransaction "$person" "$group" \
+            "Auszahlung" \
+            "$amount" "€" \
+            "liabilities:lagerkasse" \
+            "expenses:einzahlung"
+    else
+        echo "Ungültige Eingabe."
+        pressAnyKey
+        return 1
+    fi
 }
 
 printMenu() {
@@ -215,6 +250,7 @@ printMenu() {
     echo " enter to continue Verkauf"
     echo " e Einzahlen"
     echo " a Abrechnen"
+    echo " v Tabelle mit €-Werten"
     echo " n, x for next person"
     echo " q quit"
 }
@@ -244,12 +280,21 @@ main() {
                     verkauf "$person" "$group"
                     ;;
                 e)
-                    einzahlen "$person" "$group"
+                    einzahlen "$person" "$group" \
+                        || true
                     ;;
                 a)
-                    abrechnen "$person" "$group"
+                    abrechnen "$person" "$group" \
+                        || true
+                    ;;
+                v)
+                    hledgerBalance -V
                     ;;
             esac
+
+            echo
+            hledgerBalance
+            echo
 
             printMenu
             read -rp "> " choice
