@@ -12,6 +12,9 @@ options:
   -P
      Pfandrückgabe nicht automatisch starten. Nützlich bei Einzahlung in
      Lagerkasse.
+  -c
+     Credit mode - we give credit to customers. They do not have to pay in
+     advance.
   -f LEDGER_FILE
      Ledger journal file - used to record book entries and passed to hledger.
      If not specified, the environment variable LEDGER_FILE is used.
@@ -38,7 +41,7 @@ parseCommandLine() {
 
     # declare options globally and readonly
     declare option
-    while getopts 'hf:VP' option; do
+    while getopts 'hcf:VP' option; do
         case $option in
             h)
                 printUsage
@@ -46,6 +49,9 @@ parseCommandLine() {
                 ;;
             f)
                 declare -gr LEDGER_FILE=$OPTARG
+                ;;
+            c)
+                declare -gr CREDIT_MODE=1
                 ;;
             V)
                 declare -gr NO_SELL=1
@@ -191,6 +197,14 @@ sell() {
             depositReturn "$person" "$group" "$amount" \
                 || true
         else
+            if [[ -z $CREDIT_MODE ]]; then
+                # Standardmodus: Vorausbezahlung
+                # Check if person can effort $amount of $commodity + deposit
+                # TODO schwierig... dazu müsste dieses Programm wissen was
+                # $commodity wert ist und selbst Berechnungen machen...
+                # Vllt einfach warnen, wenn debit < 3 €?
+                :
+            fi
             purchase "$person" "$group" "$amount" "$commodity"
             purchase "$person" "$group" "$amount" "$COMMODITY_PFANDFLASCHE"
         fi
