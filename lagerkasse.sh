@@ -228,14 +228,35 @@ verkaufen() {
 einzahlen() {
     declare person=$1
     declare group=$2
-    # TODO check if we are in minus - in this case suggest this value
 
-    declare amount
-    read -rp "Einzuzahlender Betrag: " amount
+    declare amount balanceAmount
+    balanceAmount=$(hledgerBallanceValue)
+
+    if math "${balanceAmount/,/.} < 0"; then
+        balanceAmount=${balanceAmount#-}
+        read -rp "Einzuzahlender Betrag [enter for balance amount: $balanceAmount]: " amount
+        if [[ -z $amount ]]; then
+            if math "${balanceAmount/,/.} == 0"; then
+                return
+            else
+                if confirmYn "$balanceAmount wirklich einbezahlen?"; then
+                    amount=$balanceAmount
+                else
+                    return 1
+                fi
+            fi
+        fi
+    else
+
+        read -rp "Einzuzahlender Betrag: " amount
+        amount=${amount/,/.}
+        if [[ -z $amount ]]; then
+            return 1
+        fi
+    fi
+
     amount=${amount/,/.}
-    if [[ -z $amount ]]; then
-        return 1
-    elif [[ $amount =~ ^[0-9]+(.[0-9]*)?$ ]]; then
+    if [[ $amount =~ ^[0-9]+(.[0-9]*)?$ ]]; then
         addTransaction "$person" "$group" \
             "Einzahlung" \
             "$amount" "€" \
@@ -264,12 +285,16 @@ math() {
     [[ $result == 1 ]]
 }
 
+hledgerBallanceValue() {
+    hledgerBalance -V | awk 'END { print $1 }'
+}
+
 abrechnen() {
     declare person=$1
     declare group=$2
 
     declare restAmount
-    restAmount=$(hledgerBalance -V | awk 'END { print $1 }')
+    restAmount=$(hledgerBallanceValue)
     if math "${restAmount/,/.} < 0"; then
         echo "${restAmount#-} ausstehend! Bitte Einzahlung machen."
         einzahlen "$person" "$group" \
@@ -312,7 +337,7 @@ printMenu() {
     echo " enter for Verkauf"
     echo " e Einzahlen"
     echo " a Abrechnen"
-    echo " t Tabelle mit €-Werten"
+    echo " b Bilanz mit €-Werten"
     echo " r Buchungssätze manuell reparieren"
     echo " n, x for next person"
     echo " q quit"
@@ -352,12 +377,14 @@ main() {
                     abrechnen "$person" "$group" \
                         || true
                     ;;
-                t)
+                b)
                     hledgerBalance -V
                     ;;
                 r)
                     vim "$LEDGER_FILE"
                     ;;
+                n|x) break ;;
+                q) return ;;
             esac
 
             echo
@@ -366,10 +393,7 @@ main() {
 
             printMenu
             read -rp "> " choice
-            case $choice in
-                n|x) break ;;
-                q) return ;;
-            esac
+            echo
         done
     done
 }
