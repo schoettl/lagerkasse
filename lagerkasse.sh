@@ -17,7 +17,7 @@ options:
      advance. Currently, the only effect of this option is that a warning is
      omitted when a person's balance is less than a few Euros.
   -K
-     Skip syntax check of files personen.txt and commodities.txt on startup.
+     Skip syntax check of files $PERSONS_FILE and $COMMODITIES_FILE on startup.
   -f LEDGER_FILE
      Ledger journal file - used to record book entries and passed to hledger.
      If not specified, the environment variable LEDGER_FILE is used.
@@ -31,6 +31,8 @@ shopt -s nullglob
 
 readonly PROGNAME=${0##*/}
 readonly COMMODITY_PFANDFLASCHE=pfandflasche
+readonly PERSONS_FILE=personen.txt
+readonly COMMODITIES_FILE=commodities.txt
 readonly REGEX_METACHAR_REGEX='[][(){}\^$*+?.|]'
 
 # $1: error message
@@ -88,22 +90,22 @@ parseCommandLine() {
 }
 
 printPersonNamesOnly() {
-    cut -d$'\t' -f1 < personen.txt
+    cut -d$'\t' -f1 < "$PERSONS_FILE"
 }
 
 checkSyntax() {
     echo "Checking syntax..."
     # Must not contain ","! Because hledger tag values are seperated by comma.
-    if grep -v '[A-Za-z0-9]' commodities.txt; then
-        exitWithError "commodities.txt: invalid characters"
+    if grep -v '[A-Za-z0-9]' "$COMMODITIES_FILE"; then
+        exitWithError "$COMMODITIES_FILE: invalid characters"
     fi
-    if grep -E "$REGEX_METACHAR_REGEX|," personen.txt; then
-        exitWithError "personen.txt: invalid characters"
+    if grep -E "$REGEX_METACHAR_REGEX|," "$PERSONS_FILE"; then
+        exitWithError "$PERSONS_FILE: invalid characters"
     fi
 
     echo "Checking person names for duplicates..."
     if ! diff <(printPersonNamesOnly | sort) <(printPersonNamesOnly | sort -u); then
-        exitWithError "personen.txt: found duplicate names. use a nickname or number to distinguish."
+        exitWithError "$PERSONS_FILE: found duplicate names. use a nickname or number to distinguish."
     fi
 }
 
@@ -258,7 +260,7 @@ verkaufen() {
     declare group=$2
 
     declare commodity
-    commodity=$(runFzf < commodities.txt) || return 1
+    commodity=$(runFzf < "$COMMODITIES_FILE") || return 1
     sell "$person" "$group" "$commodity"
 }
 
@@ -389,7 +391,7 @@ main() {
 
     while true; do
         declare personSelection person group
-        personSelection=$(sort personen.txt | runFzf --delimiter='\t')
+        personSelection=$(sort "$PERSONS_FILE" | runFzf --delimiter='\t')
         IFS=$'\t' read -r person group <<< "$personSelection"
 
         if [[ -z $NO_DEPOSIT_RETURN ]]; then
