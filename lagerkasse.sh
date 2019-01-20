@@ -382,6 +382,14 @@ printMenu() {
     echo " q quit"
 }
 
+printPerson() {
+    declare person=$1
+    declare group=$2
+
+    echo
+    echo "$person, $group"
+}
+
 main() {
     parseCommandLine "$@"
 
@@ -395,7 +403,7 @@ main() {
         IFS=$'\t' read -r person group <<< "$personSelection"
 
         if [[ -z $NO_DEPOSIT_RETURN ]]; then
-            echo "$person, $group"
+            printPerson "$person" "$group"
             sell "$person" "$group" "$COMMODITY_PFANDFLASCHE"
         fi
 
@@ -403,28 +411,31 @@ main() {
         while true; do
 
             echo
-            echo "$person, $group"
-
             case $choice in
                 default)
                     if [[ -z $NO_SELL ]]; then
+                        printPerson "$person" "$group"
                         verkaufen "$person" "$group" \
                             || true
                     fi
                     ;;
                 '')
+                    printPerson "$person" "$group"
                     verkaufen "$person" "$group" \
                         || true
                     ;;
                 e)
+                    printPerson "$person" "$group"
                     einzahlen "$person" "$group" \
                         || true
                     ;;
                 a)
+                    printPerson "$person" "$group"
                     abrechnen "$person" "$group" \
                         || true
                     ;;
                 b)
+                    printPerson "$person" "$group"
                     hledgerBalance -V
                     ;;
                 r)
@@ -432,8 +443,10 @@ main() {
                     ;;
                 n|x) break ;;
                 q) return ;;
+                *) echo "Invalid input." ;;
             esac
 
+            printPerson "$person" "$group"
             echo
             hledgerBalance
             # Also print sum of balance -V
