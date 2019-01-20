@@ -32,7 +32,7 @@ shopt -s nullglob
 readonly PROGNAME=${0##*/}
 readonly COMMODITY_PFANDFLASCHE=pfandflasche
 readonly PERSONS_FILE=personen.txt
-readonly COMMODITIES_FILE=commodities.txt
+readonly COMMODITIES_FILE=artikel.txt
 readonly REGEX_METACHAR_REGEX='[][(){}\^$*+?.|]'
 
 # $1: error message
