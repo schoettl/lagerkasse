@@ -404,7 +404,6 @@ main() {
 
             echo
             echo "$person, $group"
-            echo
 
             case $choice in
                 default)
@@ -435,7 +434,11 @@ main() {
                 q) return ;;
             esac
 
+            echo
             hledgerBalance
+            # Also print sum of balance -V
+            # Leider geht durch tail die Farbe verloren
+            hledgerBalance -V | tail -2
             echo
 
             printMenu
