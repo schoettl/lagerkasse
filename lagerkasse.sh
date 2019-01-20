@@ -1,12 +1,6 @@
 #!/bin/bash
 # Lagerkasse (Getränkeverkauf, Einzahlung, Abrechnung).
 
-# TODO Remove suspicios characters from person and group before adding to
-# ledger (esp. "," and "()").
-# TODO Check commodities.txt and personen.txt syntax.
-# TODO Remove regex meta chars from person before using tag:person=...! key and
-# value are both regexes!
-
 printUsage() {
     cat <<EOF
 usage: $PROGNAME [options]
@@ -22,6 +16,8 @@ options:
      Credit mode - we give credit to customers. They do not have to pay in
      advance. Currently, the only effect of this option is that a warning is
      omitted when a person's balance is less than a few Euros.
+  -K
+     Skip syntax check of files personen.txt and commodities.txt on startup.
   -f LEDGER_FILE
      Ledger journal file - used to record book entries and passed to hledger.
      If not specified, the environment variable LEDGER_FILE is used.
@@ -35,6 +31,7 @@ shopt -s nullglob
 
 readonly PROGNAME=${0##*/}
 readonly COMMODITY_PFANDFLASCHE=pfandflasche
+readonly REGEX_METACHAR_REGEX='[][(){}\^$*+?.|]'
 
 # $1: error message
 exitWithError() {
@@ -48,7 +45,7 @@ parseCommandLine() {
 
     # declare options globally and readonly
     declare option
-    while getopts 'hcf:VP' option; do
+    while getopts 'hcKf:VP' option; do
         case $option in
             h)
                 printUsage
@@ -59,6 +56,9 @@ parseCommandLine() {
                 ;;
             c)
                 declare -gr CREDIT_MODE=1
+                ;;
+            K)
+                declare -gr SKIP_SYNTAX_CHECK=1
                 ;;
             V)
                 declare -gr NO_SELL=1
@@ -85,6 +85,26 @@ parseCommandLine() {
     fi
 
     return 0
+}
+
+printPersonNamesOnly() {
+    cut -d$'\t' -f1 < personen.txt
+}
+
+checkSyntax() {
+    echo "Checking syntax..."
+    # Must not contain ","! Because hledger tag values are seperated by comma.
+    if grep -v '[A-Za-z0-9]' commodities.txt; then
+        exitWithError "commodities.txt: invalid characters"
+    fi
+    if grep -E "$REGEX_METACHAR_REGEX|," personen.txt; then
+        exitWithError "personen.txt: invalid characters"
+    fi
+
+    echo "Checking person names for duplicates..."
+    if ! diff <(printPersonNamesOnly | sort) <(printPersonNamesOnly | sort -u); then
+        exitWithError "personen.txt: found duplicate names. use a nickname or number to distinguish."
+    fi
 }
 
 pressAnyKey() {
@@ -362,6 +382,10 @@ printMenu() {
 
 main() {
     parseCommandLine "$@"
+
+    if [[ -z $SKIP_SYNTAX_CHECK ]]; then
+        checkSyntax
+    fi
 
     while true; do
         declare personSelection person group
