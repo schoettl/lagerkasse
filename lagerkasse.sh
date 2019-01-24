@@ -115,7 +115,12 @@ pressAnyKey() {
 
 # $*: command line options for hledger balance
 hledgerBalance() {
-    hledger bal --drop=1 --flat --invert "$@" 'assets:forderungen|liabilities:lagerkasse' tag:'^person$'="^$person$"
+    hledgerCmd bal --drop=1 --flat --invert "$@"
+}
+
+# $*: command line options for hledger
+hledgerCmd() {
+    hledger "$@" 'assets:forderungen|liabilities:lagerkasse' tag:'^person$'="^$person$"
 }
 
 # $1: selected commodity
@@ -373,10 +378,11 @@ abrechnen() {
 
 printMenu() {
     echo "Choose an option:"
-    echo " enter for Verkauf"
+    echo " v, enter for Verkauf"
     echo " e Einzahlen"
     echo " a Abrechnen"
     echo " b Bilanz mit €-Werten"
+    echo " l Kontoauszug"
     echo " r Buchungssätze manuell reparieren"
     echo " n, x for next person"
     echo " q quit"
@@ -419,17 +425,17 @@ main() {
                             || true
                     fi
                     ;;
-                '')
+                ''|v|V)
                     printPerson "$person" "$group"
                     verkaufen "$person" "$group" \
                         || true
                     ;;
-                e)
+                e|E)
                     printPerson "$person" "$group"
                     einzahlen "$person" "$group" \
                         || true
                     ;;
-                a)
+                a|A)
                     printPerson "$person" "$group"
                     abrechnen "$person" "$group" \
                         || true
@@ -438,8 +444,13 @@ main() {
                     printPerson "$person" "$group"
                     hledgerBalance -V
                     ;;
+                l)
+                    hledgerCmd register
+                    ;;
                 r)
                     vim "$LEDGER_FILE"
+                    ;;
+                m)  printMenu
                     ;;
                 n|x) break ;;
                 q) return ;;
@@ -454,8 +465,7 @@ main() {
             hledgerBalance -V | tail -2
             echo
 
-            printMenu
-            read -rp "> " choice
+            read -rp "Choose an option ([V]erkauf = enter, [E]inzahlen, [A]brechnen, [n]ext person, [m]ore): " choice
             echo
         done
     done
